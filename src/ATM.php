@@ -94,4 +94,50 @@ class ATM
           'transactions' => $transactions
         );
     }
+
+    public function getOutput()
+    {
+        $output = array();
+
+        foreach ($this->sessions as $session) {
+            if (!$this->validPIN($session)) {
+                $output[] = 'ACCOUNT_ERR';
+                continue;
+            }
+            foreach ($session['transactions'] as $transaction) {
+                switch ($transaction['type']) {
+                    case self::BALANCE_INQUIRY:
+                        $output[] = $session['balance'];
+                        break;
+
+                    case self::WITHDRAWAL:
+                        if (!$this->fundsAvailable($session, $transaction)) {
+                            $output[] = 'FUNDS_ERR';
+                        } elseif ($this->outOfCash($transaction)) {
+                            $output[] = 'ATM_ERR';
+                        } else {
+                            $session['balance'] -= $transaction['amount'];
+                            $output[] = $session['balance'];
+                        }
+                }
+            }
+        }
+
+        return implode("\n", $output);
+    }
+
+    private function validPIN($session)
+    {
+        return $session['correctPIN'] == $session['introducedPIN'];
+    }
+
+    private function fundsAvailable($session, $transaction)
+    {
+        return $session['balance'] + $session['overdraft'] >= $transaction['amount'];
+    }
+
+    private function outOfCash($transaction)
+    {
+        return $this->totalCash < $transaction['amount'];
+    }
 }
