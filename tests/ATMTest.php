@@ -2,9 +2,23 @@
 
 class ATMTest extends \PHPUnit_Framework_TestCase
 {
-    public function test()
+    public function testInputWithNoSecondBlankLine()
     {
-        $atm = new ATM();
-        $this->assertTrue(true);
+        $input = $text = <<<'EOT'
+8000
+text
+EOT;
+        $this->setExpectedException('InvalidArgumentException');
+        $atm = new ATM($input);
+    }
+
+    public function testInputWithInvalidTotalCash()
+    {
+        $input = $text = <<<'EOT'
+text
+
+EOT;
+        $this->setExpectedException('InvalidArgumentException');
+        $atm = new ATM($input);
     }
 }
