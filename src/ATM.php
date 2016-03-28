@@ -2,10 +2,12 @@
 
 class ATM
 {
-    const BALANCE_INQUIRY_SYMBOL = 'B';
-    const BALANCE_INQUIRY = 1;
-    const WITHDRAWAL_SYMBOL = 'W';
-    const WITHDRAWAL = 2;
+    const BALANCE_INQUIRY = 'B';
+    const WITHDRAWAL = 'W';
+
+    const INVALID_ACCOUNT_ERR = 'ACCOUNT_ERR';
+    const UNAVAILABLE_FUNDS_ERR = 'FUNDS_ERR';
+    const ATM_OUT_OF_CASH_ERR = 'ATM_ERR';
 
     private $totalCash;
     private $sessions = array();
@@ -21,12 +23,14 @@ class ATM
         $this->totalCash = $lines[0];
 
         if (!empty($lines[2])) {
-            $this->extractSessions($lines[2]);
+            $this->sessions = $this->extractSessions($lines[2]);
         }
     }
 
     private function extractSessions($input)
     {
+        $extractedSessions = array();
+
         $sessions = explode("\n\n", $input);
         foreach ($sessions as $session) {
             $lines = explode("\n", $session, 3);
@@ -34,12 +38,14 @@ class ATM
                 throw new \InvalidArgumentException('Wrong argument. Each session consists of at least 3 lines');
             }
 
-            $this->sessions[] = array_merge(
+            $extractedSessions[] = array_merge(
                 $this->extractAccountNumberAndPINs($lines[0]),
                 $this->extractBalanceAndOverdraft($lines[1]),
                 $this->extractTransactions($lines[2])
             );
         }
+
+        return $extractedSessions;
     }
 
     private function extractAccountNumberAndPINs($line)
@@ -74,20 +80,7 @@ class ATM
 
         $lines = explode("\n", $input);
         foreach ($lines as $line) {
-            $words = explode(" ", $line);
-
-            if (count($words) == 1 && $words[0] == self::BALANCE_INQUIRY_SYMBOL) {
-                $transactions[] = array(
-                  'type' => self::BALANCE_INQUIRY
-                );
-            } elseif (count($words) == 2 && $words[0] == self::WITHDRAWAL_SYMBOL && is_numeric($words[1])) {
-                $transactions[] = array(
-                  'type' => self::WITHDRAWAL,
-                  'amount' => $words[1],
-                );
-            } else {
-                throw new \InvalidArgumentException("Wrong argument. Invalid transaction");
-            }
+            $transactions[] = $this->extractTransaction($line);
         }
 
         return array(
@@ -95,15 +88,34 @@ class ATM
         );
     }
 
+    private function extractTransaction($line)
+    {
+        $words = explode(" ", $line);
+
+        if (count($words) == 1 && $words[0] == self::BALANCE_INQUIRY) {
+            return array(
+              'type' => self::BALANCE_INQUIRY
+            );
+        } elseif (count($words) == 2 && $words[0] == self::WITHDRAWAL && is_numeric($words[1])) {
+            return array(
+              'type'   => self::WITHDRAWAL,
+              'amount' => $words[1],
+            );
+        } else {
+            throw new \InvalidArgumentException("Wrong argument. Invalid transaction");
+        }
+    }
+
     public function getOutput()
     {
         $output = array();
 
         foreach ($this->sessions as $session) {
-            if (!$this->validPIN($session)) {
-                $output[] = 'ACCOUNT_ERR';
+            if (!$this->isValidAccount($session)) {
+                $output[] = self::INVALID_ACCOUNT_ERR;
                 continue;
             }
+
             foreach ($session['transactions'] as $transaction) {
                 switch ($transaction['type']) {
                     case self::BALANCE_INQUIRY:
@@ -111,10 +123,10 @@ class ATM
                         break;
 
                     case self::WITHDRAWAL:
-                        if (!$this->fundsAvailable($session, $transaction)) {
-                            $output[] = 'FUNDS_ERR';
-                        } elseif ($this->outOfCash($transaction)) {
-                            $output[] = 'ATM_ERR';
+                        if (!$this->areFundsAvailable($session, $transaction)) {
+                            $output[] = self::UNAVAILABLE_FUNDS_ERR;
+                        } elseif ($this->isATMOutOfCash($transaction)) {
+                            $output[] = self::ATM_OUT_OF_CASH_ERR;
                         } else {
                             $session['balance'] -= $transaction['amount'];
                             $output[] = $session['balance'];
@@ -126,17 +138,17 @@ class ATM
         return implode("\n", $output);
     }
 
-    private function validPIN($session)
+    private function isValidAccount($session)
     {
         return $session['correctPIN'] == $session['introducedPIN'];
     }
 
-    private function fundsAvailable($session, $transaction)
+    private function areFundsAvailable($session, $transaction)
     {
         return $session['balance'] + $session['overdraft'] >= $transaction['amount'];
     }
 
-    private function outOfCash($transaction)
+    private function isATMOutOfCash($transaction)
     {
         return $this->totalCash < $transaction['amount'];
     }
